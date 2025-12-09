@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
 import { Loader2, Navigation, Phone, MessageSquare } from "lucide-react"
+import { doc, onSnapshot } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 
 // Dynamic import for LeafletMap
 const LeafletMap = dynamic(() => import("@/components/leaflet-map"), {
@@ -23,6 +25,7 @@ interface TrackingProps {
   providerName: string
   providerPhone?: string
   estimatedTime?: number // in minutes
+  driverId?: string
 }
 
 interface ProviderLocation {
@@ -33,13 +36,16 @@ interface ProviderLocation {
   lastUpdated: Date
 }
 
-export function RealTimeTracking({ serviceId, providerName, providerPhone, estimatedTime }: TrackingProps) {
+export function RealTimeTracking({ serviceId, providerName, providerPhone, estimatedTime, driverId }: TrackingProps) {
   const [providerLocation, setProviderLocation] = useState<ProviderLocation | null>(null)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [distance, setDistance] = useState<number | null>(null)
   const [timeRemaining, setTimeRemaining] = useState<number | null>(estimatedTime || null)
   const { toast } = useToast()
+
+  // Ref to clean up simulation interval if we switch to live tracking
+  const simulationIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Initialize location
   useEffect(() => {
@@ -51,7 +57,9 @@ export function RealTimeTracking({ serviceId, providerName, providerPhone, estim
             lng: position.coords.longitude,
           }
           setUserLocation(userPos)
-          simulateProviderMovement(userPos)
+          if (!driverId) {
+            simulateProviderMovement(userPos)
+          }
         },
         (error) => {
           console.error("Error getting location:", error)
@@ -63,19 +71,67 @@ export function RealTimeTracking({ serviceId, providerName, providerPhone, estim
           // Default: Mumbai
           const defaultPos = { lat: 19.076, lng: 72.8777 }
           setUserLocation(defaultPos)
-          simulateProviderMovement(defaultPos)
+          if (!driverId) {
+            simulateProviderMovement(defaultPos)
+          }
         }
       )
     } else {
       // Fallback
       const defaultPos = { lat: 19.076, lng: 72.8777 }
       setUserLocation(defaultPos)
-      simulateProviderMovement(defaultPos)
+      if (!driverId) {
+        simulateProviderMovement(defaultPos)
+      }
     }
-  }, [])
+  }, [driverId]) // Re-run if driverId changes (which might toggle sim vs live)
+
+  // Live Driver Tracking
+  useEffect(() => {
+    if (!driverId) return
+
+    // Clear simulation if it's running
+    if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current)
+      simulationIntervalRef.current = null
+    }
+
+    const unsubscribe = onSnapshot(doc(db, "users", driverId), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data()
+        if (data.currentLocation) {
+          const newLoc = {
+            lat: data.currentLocation.lat,
+            lng: data.currentLocation.lng,
+            heading: 0, // Could calc from prev pos
+            speed: 0,   // Could calc
+            lastUpdated: new Date(data.currentLocation.timestamp)
+          }
+          setProviderLocation(newLoc)
+          setLoading(false)
+
+          // Update distance/time (simple calculation)
+          if (userLocation) {
+            const dist = calculateDistance(newLoc, userLocation)
+            setDistance(dist)
+            // Rough estimate 30km/h
+            const time = Math.round((dist / 30) * 60)
+            setTimeRemaining(time)
+          }
+        }
+      }
+    })
+
+    return () => unsubscribe()
+  }, [driverId, userLocation])
+
 
   // Simulate provider movement
   const simulateProviderMovement = (userPos: { lat: number; lng: number }) => {
+    // ... (Simulation Logic kept as fallback?)
+    // Actually, let's keep it but ensure it doesn't run if driverId is set.
+    // The useEffect above handles the "if (!driverId)" check.
+
     // Start ~2km away
     const startingPos = {
       lat: userPos.lat + (Math.random() - 0.5) * 0.04,
@@ -105,7 +161,11 @@ export function RealTimeTracking({ serviceId, providerName, providerPhone, estim
     const totalSteps = 100
     let currentStep = 0
 
+    // Clear any existing interval
+    if (simulationIntervalRef.current) clearInterval(simulationIntervalRef.current)
+
     const interval = setInterval(() => {
+      // ... (existing simulation step logic) 
       if (currentStep >= totalSteps) {
         clearInterval(interval)
         toast({
@@ -139,6 +199,8 @@ export function RealTimeTracking({ serviceId, providerName, providerPhone, estim
       }
 
     }, 2000)
+
+    simulationIntervalRef.current = interval
 
     return () => clearInterval(interval)
   }

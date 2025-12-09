@@ -1,7 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useAuth } from "@/components/auth-provider"
+import { doc, getDoc, updateDoc } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -11,13 +13,94 @@ import Link from "next/link"
 
 export default function DriverDashboard() {
     const { user } = useAuth()
-    const [isOnline, setIsOnline] = useState(true)
+    const [isOnline, setIsOnline] = useState(false)
     const [activeJob, setActiveJob] = useState<any>(null)
+    const [locationError, setLocationError] = useState<string | null>(null)
+    // Ref to store watch ID
+    const watchIdRef = useRef<number | null>(null)
 
-    // Mock active job for now
+    const startLocationTracking = () => {
+        if (!navigator.geolocation) {
+            setLocationError("Geolocation is not supported by your browser")
+            return
+        }
+
+        const id = navigator.geolocation.watchPosition(
+            async (position) => {
+                if (user) {
+                    try {
+                        await updateDoc(doc(db, "users", user.uid), {
+                            currentLocation: {
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude,
+                                timestamp: Date.now()
+                            }
+                        })
+                    } catch (error) {
+                        console.error("Error updating location:", error)
+                    }
+                }
+            },
+            (error) => {
+                console.error("Location error:", error)
+                setLocationError("Unable to retrieve location")
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 5000
+            }
+        )
+        watchIdRef.current = id
+    }
+
+    const stopLocationTracking = () => {
+        if (watchIdRef.current !== null) {
+            navigator.geolocation.clearWatch(watchIdRef.current)
+            watchIdRef.current = null
+        }
+    }
+
+    // Fetch initial availability
     useEffect(() => {
-        // Simulate loading data
-    }, [])
+        if (!user) return
+        const fetchStatus = async () => {
+            const docRef = doc(db, "users", user.uid)
+            const docSnap = await getDoc(docRef)
+            if (docSnap.exists()) {
+                const data = docSnap.data()
+                if (data.availability === "online") {
+                    setIsOnline(true)
+                    startLocationTracking()
+                }
+            }
+        }
+        fetchStatus()
+
+        // Cleanup on unmount
+        return () => stopLocationTracking()
+    }, [user])
+
+    const handleStatusToggle = async (checked: boolean) => {
+        setIsOnline(checked)
+        if (user) {
+            try {
+                await updateDoc(doc(db, "users", user.uid), {
+                    availability: checked ? "online" : "offline"
+                })
+
+                if (checked) {
+                    startLocationTracking()
+                } else {
+                    stopLocationTracking()
+                }
+
+            } catch (error) {
+                console.error("Error updating status:", error)
+                setIsOnline(!checked)
+            }
+        }
+    }
 
     return (
         <div className="space-y-8">
@@ -30,7 +113,7 @@ export default function DriverDashboard() {
                     <span className={`text-sm font-medium ${isOnline ? "text-green-400" : "text-gray-400"}`}>
                         {isOnline ? "Online & Available" : "Offline"}
                     </span>
-                    <Switch checked={isOnline} onCheckedChange={setIsOnline} />
+                    <Switch checked={isOnline} onCheckedChange={handleStatusToggle} />
                 </div>
             </div>
 

@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+    
+    function isDriver() {
+      return isAuthenticated() && getUserData().role == 'driver';
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      // Admin can read/write all
+      allow read, write: if isAdmin();
+      // Users can read/write their own data
+      allow read, update: if request.auth.uid == userId;
+      // Drivers can be read by customers if assigned (simplified for now, anyone auth can read basic driver info)
+      allow read: if isAuthenticated(); 
+      allow create: if isAuthenticated(); // For signup
+    }
+
+    // Orders Collection
+    match /orders/{orderId} {
+      // Admin can read/write all
+      allow read, write: if isAdmin();
+      // Customers can read/create their own orders
+      allow create: if isAuthenticated();
+      allow read: if isAuthenticated() && (resource.data.user_id == request.auth.uid || resource.data.driverId == request.auth.uid);
+      // Drivers can update status if assigned
+      allow update: if isDriver() && resource.data.driverId == request.auth.uid;
+    }
+
+    // Service Requests (Mechanic)
+    match /service_requests/{requestId} {
+      allow read, write: if isAdmin();
+      allow create: if isAuthenticated();
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+  }
+}

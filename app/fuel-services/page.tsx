@@ -30,6 +30,7 @@ interface OrderDetails {
   amount: number
   status: string
   created_at: string
+  driverId?: string
 }
 
 export default function FuelServicesPage() {
@@ -60,7 +61,12 @@ export default function FuelServicesPage() {
     const unsubscribe = onSnapshot(doc(db, "orders", orderDetails.id), (doc) => {
       if (doc.exists()) {
         const data = doc.data()
-        setOrderDetails(prev => prev ? ({ ...prev, status: data.status }) : null)
+        // Merge status and driverId updates
+        setOrderDetails(prev => prev ? ({
+          ...prev,
+          status: data.status,
+          driverId: data.driverId
+        }) : null)
 
         if (data.status === "completed") {
           toast({ title: "Order Completed", description: "Your fuel has been delivered!" })
@@ -446,6 +452,7 @@ export default function FuelServicesPage() {
                       providerName={selectedLocation.name}
                       providerPhone={selectedLocation.phone || "9876543210"}
                       estimatedTime={Math.round(selectedLocation.distance * 5 + 15)}
+                      driverId={orderDetails.driverId}
                     />
                     <div className="flex gap-2">
                       <Button onClick={handleOrderComplete} className="w-full bg-eco-green-600">
