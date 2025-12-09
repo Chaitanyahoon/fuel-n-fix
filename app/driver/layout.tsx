@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
-import { FuelIcon as GasPump, LayoutDashboard, Truck, LogOut, Menu, User, MapPin } from "lucide-react"
+import { FuelIcon as GasPump, LayoutDashboard, Truck, LogOut, Menu, User, MapPin, History, Calendar } from "lucide-react"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 
 export default function DriverLayout({
@@ -34,26 +34,26 @@ export default function DriverLayout({
 
     const routes = [
         {
-            href: "/driver",
             label: "Dashboard",
+            href: "/driver",
             icon: LayoutDashboard,
             active: pathname === "/driver",
         },
         {
-            href: "/driver/jobs",
             label: "Available Jobs",
+            href: "/driver/jobs",
             icon: MapPin,
             active: pathname === "/driver/jobs",
         },
         {
-            href: "/driver/history",
             label: "Job History",
-            icon: Truck,
+            href: "/driver/history",
+            icon: Calendar,
             active: pathname === "/driver/history",
         },
         {
-            href: "/driver/profile",
             label: "My Profile",
+            href: "/driver/profile",
             icon: User,
             active: pathname === "/driver/profile",
         },
@@ -76,8 +76,8 @@ export default function DriverLayout({
                                 key={route.href}
                                 href={route.href}
                                 className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${route.active
-                                        ? "bg-eco-green-600/20 text-eco-green-400"
-                                        : "text-gray-400 hover:bg-eco-dark-800 hover:text-white"
+                                    ? "bg-eco-green-600/20 text-eco-green-400"
+                                    : "text-gray-400 hover:bg-eco-dark-800 hover:text-white"
                                     }`}
                             >
                                 <route.icon className="h-4 w-4" />
@@ -137,8 +137,8 @@ export default function DriverLayout({
                                             href={route.href}
                                             onClick={() => setIsMobileMenuOpen(false)}
                                             className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${route.active
-                                                    ? "bg-eco-green-600/20 text-eco-green-400"
-                                                    : "text-gray-400 hover:bg-eco-dark-800 hover:text-white"
+                                                ? "bg-eco-green-600/20 text-eco-green-400"
+                                                : "text-gray-400 hover:bg-eco-dark-800 hover:text-white"
                                                 }`}
                                         >
                                             <route.icon className="h-4 w-4" />
