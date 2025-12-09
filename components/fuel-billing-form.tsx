@@ -12,10 +12,16 @@ import { useToast } from "@/components/ui/use-toast"
 import { FuelIcon as GasPump, CreditCard, Loader2 } from "lucide-react"
 
 interface FuelBillingFormProps {
-  userLocation: { lat: number; lng: number } | null
-  stationLocation: { lat: number; lng: number } | null
+  userLocation?: { lat: number; lng: number } | null
+  stationLocation?: { lat: number; lng: number } | null
   stationName?: string
   onPaymentComplete?: () => void
+  fuelType?: string
+  quantity?: number
+  subtotal?: number
+  deliveryFee?: number
+  tax?: number
+  total?: number
 }
 
 // Current fuel prices in India (as of April 2023)
@@ -30,20 +36,29 @@ export function FuelBillingForm({
   stationLocation,
   stationName = "Selected Station",
   onPaymentComplete,
+  fuelType: propFuelType,
+  quantity: propQuantity,
+  subtotal: propSubtotal,
+  deliveryFee: propDeliveryFee,
+  tax: propTax,
+  total: propTotal,
 }: FuelBillingFormProps) {
-  const [fuelType, setFuelType] = useState("petrol")
-  const [quantity, setQuantity] = useState(5)
+  const [fuelType, setFuelType] = useState(propFuelType || "petrol")
+  const [quantity, setQuantity] = useState(propQuantity || 5)
   const [distance, setDistance] = useState<number | null>(null)
-  const [deliveryCharge, setDeliveryCharge] = useState(30)
-  const [subtotal, setSubtotal] = useState(0)
-  const [total, setTotal] = useState(0)
+  const [deliveryCharge, setDeliveryCharge] = useState(propDeliveryFee || 30)
+  const [subtotal, setSubtotal] = useState(propSubtotal || 0)
+  const [total, setTotal] = useState(propTotal || 0)
   const [loading, setLoading] = useState(false)
   const [showPaymentOptions, setShowPaymentOptions] = useState(false)
   const { toast } = useToast()
 
+  // Use props if available
+  const isControlled = typeof propTotal === "number"
+
   // Calculate distance between user and station
   useEffect(() => {
-    if (userLocation && stationLocation) {
+    if (userLocation && stationLocation && !isControlled) {
       // Simple distance calculation (in km) using Haversine formula
       const R = 6371 // Earth's radius in km
       const dLat = ((stationLocation.lat - userLocation.lat) * Math.PI) / 180
@@ -51,12 +66,11 @@ export function FuelBillingForm({
       const a =
         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
         Math.cos((userLocation.lat * Math.PI) / 180) *
-          Math.cos((stationLocation.lat * Math.PI) / 180) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2)
+        Math.cos((stationLocation.lat * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2)
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
       const calculatedDistance = R * c
-
       setDistance(calculatedDistance)
 
       // Set delivery charge based on distance
@@ -68,15 +82,17 @@ export function FuelBillingForm({
         setDeliveryCharge(50)
       }
     }
-  }, [userLocation, stationLocation])
+  }, [userLocation, stationLocation, isControlled])
 
   // Calculate subtotal and total
   useEffect(() => {
-    const fuelPrice = FUEL_PRICES[fuelType as keyof typeof FUEL_PRICES]
-    const calculatedSubtotal = quantity * fuelPrice
-    setSubtotal(calculatedSubtotal)
-    setTotal(calculatedSubtotal + deliveryCharge)
-  }, [fuelType, quantity, deliveryCharge])
+    if (!isControlled) {
+      const fuelPrice = FUEL_PRICES[fuelType as keyof typeof FUEL_PRICES] || 96.72
+      const calculatedSubtotal = quantity * fuelPrice
+      setSubtotal(calculatedSubtotal)
+      setTotal(calculatedSubtotal + deliveryCharge)
+    }
+  }, [fuelType, quantity, deliveryCharge, isControlled])
 
   const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number.parseInt(e.target.value)
@@ -118,7 +134,7 @@ export function FuelBillingForm({
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-6 space-y-4 bg-eco-dark-800">
-        {!showPaymentOptions ? (
+        {!showPaymentOptions && !isControlled ? (
           <>
             <div className="space-y-2">
               <Label htmlFor="fuelType" className="text-eco-green-100">
@@ -153,53 +169,40 @@ export function FuelBillingForm({
                 className="border-eco-green-700 focus-visible:ring-eco-green-500 bg-eco-dark-900 text-white"
               />
             </div>
-
-            <div className="bg-eco-dark-900 p-4 rounded-md space-y-3">
-              <div className="flex justify-between text-eco-green-100">
-                <span>Fuel Price:</span>
-                <span>₹{FUEL_PRICES[fuelType as keyof typeof FUEL_PRICES]}/L</span>
-              </div>
-              <div className="flex justify-between text-eco-green-100">
-                <span>Quantity:</span>
-                <span>{quantity} Liters</span>
-              </div>
-              <div className="flex justify-between text-eco-green-100">
-                <span>Subtotal:</span>
-                <span>₹{subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-eco-green-100">
-                <span>Delivery Charge:</span>
-                <span>₹{deliveryCharge.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-white border-t border-eco-green-800 pt-2">
-                <span>Total:</span>
-                <span>₹{total.toFixed(2)}</span>
-              </div>
-            </div>
           </>
-        ) : (
-          <div className="space-y-4">
-            <div className="bg-eco-dark-900 p-4 rounded-md">
-              <h3 className="font-medium text-white mb-2">Order Summary</h3>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between text-eco-green-100">
-                  <span>
-                    {quantity} L of{" "}
-                    {fuelType === "petrol" ? "Petrol" : fuelType === "diesel" ? "Diesel" : "Premium Petrol"}
-                  </span>
-                  <span>₹{subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-eco-green-100">
-                  <span>Delivery Charge ({distance?.toFixed(1)} km)</span>
-                  <span>₹{deliveryCharge.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between font-medium text-white border-t border-eco-green-800 pt-1 mt-1">
-                  <span>Total Amount</span>
-                  <span>₹{total.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
+        ) : null}
 
+        <div className="bg-eco-dark-900 p-4 rounded-md space-y-3">
+          <div className="flex justify-between text-eco-green-100">
+            <span>Fuel Price:</span>
+            <span>₹{isControlled ? (propTotal && propQuantity ? (propTotal / propQuantity).toFixed(2) : "0.00") : FUEL_PRICES[fuelType as keyof typeof FUEL_PRICES]}/L</span>
+          </div>
+          <div className="flex justify-between text-eco-green-100">
+            <span>Quantity:</span>
+            <span>{isControlled ? propQuantity : quantity} Liters</span>
+          </div>
+          <div className="flex justify-between text-eco-green-100">
+            <span>Subtotal:</span>
+            <span>₹{(isControlled ? propSubtotal : subtotal)?.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-eco-green-100">
+            <span>Delivery Charge:</span>
+            <span>₹{(isControlled ? propDeliveryFee : deliveryCharge)?.toFixed(2)}</span>
+          </div>
+          {propTax !== undefined && (
+            <div className="flex justify-between text-eco-green-100">
+              <span>Tax:</span>
+              <span>₹{propTax.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between font-bold text-white border-t border-eco-green-800 pt-2">
+            <span>Total:</span>
+            <span>₹{(isControlled ? propTotal : total)?.toFixed(2)}</span>
+          </div>
+        </div>
+
+        {showPaymentOptions && (
+          <div className="space-y-4">
             <div>
               <h3 className="font-medium text-white mb-3">Select Payment Method</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -252,25 +255,29 @@ export function FuelBillingForm({
           </div>
         )}
       </CardContent>
-      <CardFooter className="bg-eco-dark-900 border-t border-eco-green-800">
-        {!showPaymentOptions ? (
-          <Button
-            onClick={handleProceedToPayment}
-            className="w-full gap-2 bg-eco-green-600 hover:bg-eco-green-700 text-white"
-          >
-            <CreditCard className="h-4 w-4" />
-            Proceed to Payment
-          </Button>
-        ) : (
-          <Button
-            onClick={() => setShowPaymentOptions(false)}
-            variant="outline"
-            className="w-full border-eco-green-600 text-eco-green-500 hover:bg-eco-green-900/20"
-          >
-            Back to Order Details
-          </Button>
-        )}
-      </CardFooter>
+      {!isControlled && (
+        <CardFooter className="bg-eco-dark-900 border-t border-eco-green-800">
+          {!showPaymentOptions ? (
+            <Button
+              onClick={handleProceedToPayment}
+              className="w-full gap-2 bg-eco-green-600 hover:bg-eco-green-700 text-white"
+            >
+              <CreditCard className="h-4 w-4" />
+              Proceed to Payment
+            </Button>
+          ) : (
+            <Button
+              onClick={() => setShowPaymentOptions(false)}
+              variant="outline"
+              className="w-full border-eco-green-600 text-eco-green-500 hover:bg-eco-green-900/20"
+            >
+              Back to Order Details
+            </Button>
+          )}
+        </CardFooter>
+      )}
     </Card>
   )
 }
+
+

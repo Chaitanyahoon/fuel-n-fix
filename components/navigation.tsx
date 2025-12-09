@@ -3,7 +3,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { useSupabase } from "@/components/supabase-provider"
+import { useAuth } from "@/components/auth-provider"
 import { useToast } from "@/hooks/use-toast"
 import { FuelIcon as GasPump, Menu, X, User, LogOut } from "lucide-react"
 import {
@@ -17,7 +17,7 @@ import {
 export function Navigation() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isDemoUser, setIsDemoUser] = useState(false)
-  const { user, supabase, loading, isError } = useSupabase()
+  const { user, loading, logout } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
   const { toast } = useToast()
@@ -37,19 +37,15 @@ export function Navigation() {
         localStorage.removeItem("demo_authenticated")
         localStorage.removeItem("demo_user")
         setIsDemoUser(false)
+        router.push("/")
         toast({
           title: "Logged out",
           description: "You have been logged out successfully",
         })
       } else {
-        // Supabase logout
-        await supabase.auth.signOut()
-        toast({
-          title: "Logged out",
-          description: "You have been logged out successfully",
-        })
+        // Firebase logout
+        await logout()
       }
-      router.push("/")
     } catch (error) {
       console.error("Logout error:", error)
       toast({
@@ -85,13 +81,13 @@ export function Navigation() {
   }
 
   return (
-    <nav className="bg-white shadow-sm border-b">
+    <nav className="bg-black/80 backdrop-blur-md border-b border-white/10 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
-              <GasPump className="h-8 w-8 text-blue-600" />
-              <span className="ml-2 text-xl font-bold text-gray-900">Fuel N Fix</span>
+              <GasPump className="h-8 w-8 text-green-500" />
+              <span className="ml-2 text-xl font-bold text-white tracking-widest uppercase">Fuel <span className="text-green-500">N</span> Fix</span>
             </Link>
           </div>
 
@@ -101,9 +97,10 @@ export function Navigation() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  pathname === item.href ? "text-blue-600 bg-blue-50" : ""
-                }`}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-300 ${pathname === item.href
+                  ? "text-green-400 bg-green-500/10 border border-green-500/20"
+                  : "text-gray-300 hover:text-white hover:bg-white/5"
+                  }`}
               >
                 {item.label}
               </Link>
@@ -115,20 +112,20 @@ export function Navigation() {
             {isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="flex items-center space-x-2">
+                  <Button variant="ghost" className="flex items-center space-x-2 text-white hover:bg-white/10">
                     <User className="h-4 w-4" />
                     <span>{isDemoUser ? "Demo User" : user?.email?.split("@")[0] || "User"}</span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem asChild>
+                <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white">
+                  <DropdownMenuItem asChild className="focus:bg-gray-800 focus:text-white">
                     <Link href="/profile" className="flex items-center">
                       <User className="mr-2 h-4 w-4" />
                       Profile
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleLogout} className="flex items-center">
+                  <DropdownMenuSeparator className="bg-gray-800" />
+                  <DropdownMenuItem onClick={handleLogout} className="flex items-center focus:bg-gray-800 focus:text-white">
                     <LogOut className="mr-2 h-4 w-4" />
                     Logout
                   </DropdownMenuItem>
@@ -136,19 +133,19 @@ export function Navigation() {
               </DropdownMenu>
             ) : (
               <div className="flex items-center space-x-4">
-                <Link href="/login">
-                  <Button variant="ghost">Login</Button>
-                </Link>
-                <Link href="/signup">
-                  <Button>Sign Up</Button>
-                </Link>
+                <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-white/5" asChild>
+                  <Link href="/login">Login</Link>
+                </Button>
+                <Button className="bg-green-600 hover:bg-green-700 text-white border-none shadow-lg shadow-green-900/20" asChild>
+                  <Link href="/signup">Sign Up</Link>
+                </Button>
               </div>
             )}
           </div>
 
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center">
-            <Button variant="ghost" size="sm" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+            <Button variant="ghost" size="sm" onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-white hover:bg-white/10">
               {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </Button>
           </div>
@@ -156,28 +153,27 @@ export function Navigation() {
 
         {/* Mobile Navigation */}
         {isMenuOpen && (
-          <div className="md:hidden">
+          <div className="md:hidden bg-gray-900 border-t border-gray-800">
             <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
               {navItems.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`block px-3 py-2 rounded-md text-base font-medium transition-colors ${
-                    pathname === item.href
-                      ? "text-blue-600 bg-blue-50"
-                      : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                  }`}
+                  className={`block px-3 py-2 rounded-md text-base font-medium transition-colors ${pathname === item.href
+                    ? "text-green-400 bg-green-900/20"
+                    : "text-gray-300 hover:text-white hover:bg-gray-800"
+                    }`}
                   onClick={() => setIsMenuOpen(false)}
                 >
                   {item.label}
                 </Link>
               ))}
-              <div className="border-t border-gray-200 pt-4 pb-3">
+              <div className="border-t border-gray-800 pt-4 pb-3">
                 {isAuthenticated ? (
                   <div className="space-y-1">
                     <Link
                       href="/profile"
-                      className="block px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                      className="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-800"
                       onClick={() => setIsMenuOpen(false)}
                     >
                       Profile
@@ -187,7 +183,7 @@ export function Navigation() {
                         handleLogout()
                         setIsMenuOpen(false)
                       }}
-                      className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                      className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-800"
                     >
                       Logout
                     </button>
@@ -196,14 +192,14 @@ export function Navigation() {
                   <div className="space-y-1">
                     <Link
                       href="/login"
-                      className="block px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                      className="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-800"
                       onClick={() => setIsMenuOpen(false)}
                     >
                       Login
                     </Link>
                     <Link
                       href="/signup"
-                      className="block px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                      className="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-800"
                       onClick={() => setIsMenuOpen(false)}
                     >
                       Sign Up

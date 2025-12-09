@@ -15,7 +15,7 @@ interface ServiceCardProps {
 
 export function ServiceCard({ icon, title, description, features, price, href }: ServiceCardProps) {
   return (
-    <Card className="flex flex-col h-full bg-eco-dark-900 border-eco-green-700 shadow-lg shadow-eco-green-900/20">
+    <Card className="flex flex-col h-full bg-black/40 backdrop-blur-md border-green-500/20 shadow-lg shadow-green-900/10 hover:bg-black/60 transition-all duration-300 hover:border-green-500/40 hover:-translate-y-1">
       <CardHeader>
         <div className="flex justify-center mb-4">
           <div className="rounded-full bg-eco-dark-800 p-4">{icon}</div>
@@ -35,12 +35,12 @@ export function ServiceCard({ icon, title, description, features, price, href }:
         <p className="mt-4 text-sm font-medium text-eco-green-400">{price}</p>
       </CardContent>
       <CardFooter>
-        <Link href={href} className="w-full">
-          <Button className="w-full gap-2 bg-eco-green-600 hover:bg-eco-green-700 text-white">
+        <Button className="w-full gap-2 bg-eco-green-600 hover:bg-eco-green-700 text-white" asChild>
+          <Link href={href} className="w-full">
             Learn More
             <ChevronRight className="h-4 w-4" />
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </CardFooter>
     </Card>
   )

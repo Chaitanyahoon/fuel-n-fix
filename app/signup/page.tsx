@@ -1,7 +1,6 @@
 "use client"
 
-import type React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -10,10 +9,13 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { Navigation } from "@/components/navigation"
-import { useSupabase } from "@/components/supabase-provider"
+import { createUserWithEmailAndPassword } from "firebase/auth"
+import { auth, db } from "@/lib/firebase"
+import { doc, setDoc } from "firebase/firestore"
+import { checkEnvironmentVariables } from "@/utils/env-checker"
+import { accountLimiter } from "@/utils/account-limits"
 import { FuelIcon as GasPump, Loader2, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { checkAccountLimits, recordAccountCreation } from "@/utils/account-limits"
 
 export default function SignupPage() {
   const [formData, setFormData] = useState({
@@ -25,9 +27,16 @@ export default function SignupPage() {
     address: "",
   })
   const [loading, setLoading] = useState(false)
-  const { supabase, isError } = useSupabase()
+  const [isFirebaseConfigured, setIsFirebaseConfigured] = useState(true)
   const router = useRouter()
   const { toast } = useToast()
+
+  useEffect(() => {
+    const { hasFirebaseConfig } = checkEnvironmentVariables();
+    setIsFirebaseConfigured(hasFirebaseConfig);
+    // Load stored attempts
+    accountLimiter.loadStoredAttempts();
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -38,11 +47,11 @@ export default function SignupPage() {
     setLoading(true)
 
     // Check account limits
-    const limitCheck = checkAccountLimits(formData.email)
+    const limitCheck = accountLimiter.canCreateAccount(formData.email)
     if (!limitCheck.allowed) {
       toast({
         title: "Account creation limit reached",
-        description: limitCheck.message,
+        description: limitCheck.reason,
         variant: "destructive",
       })
       setLoading(false)
@@ -64,7 +73,7 @@ export default function SignupPage() {
 
     localStorage.setItem("demo_user", JSON.stringify(demoUser))
     localStorage.setItem("demo_authenticated", "true")
-    recordAccountCreation(formData.email)
+    accountLimiter.recordAttempt(formData.email)
 
     toast({
       title: "Demo Account Created",
@@ -75,7 +84,7 @@ export default function SignupPage() {
     router.push("/")
   }
 
-  const handleSupabaseSignup = async (e: React.FormEvent) => {
+  const handleFirebaseSignup = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (formData.password !== formData.confirmPassword) {
@@ -90,34 +99,31 @@ export default function SignupPage() {
     setLoading(true)
 
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password)
+      const user = userCredential.user
+
+      // Create user profile in Firestore
+      await setDoc(doc(db, "users", user.uid), {
+        full_name: formData.name,
+        phone_number: formData.phone,
+        address: formData.address,
         email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            name: formData.name,
-            phone: formData.phone,
-            address: formData.address,
-          },
-        },
+        role: "customer", // Default role
+        created_at: new Date().toISOString(),
       })
 
-      if (error) {
-        throw error
-      }
-
-      if (data.user) {
+      if (user) {
         toast({
           title: "Account created successfully",
-          description: "Please check your email for verification",
+          description: "Welcome to Fuel N Fix!",
         })
-        router.push("/login")
+        router.push("/")
       }
     } catch (error: any) {
       console.error("Signup error:", error)
       toast({
         title: "Signup failed",
-        description: error.message || "An error occurred during signup",
+        description: `[${error.code}] ${error.message || "An error occurred during signup"}`,
         variant: "destructive",
       })
     } finally {
@@ -137,10 +143,10 @@ export default function SignupPage() {
       return
     }
 
-    if (isError) {
+    if (!isFirebaseConfigured) {
       handleDemoSignup()
     } else {
-      handleSupabaseSignup(e)
+      handleFirebaseSignup(e)
     }
   }
 
@@ -159,7 +165,7 @@ export default function SignupPage() {
             <CardDescription className="text-center">Sign up for Fuel N Fix to get started</CardDescription>
           </CardHeader>
 
-          {isError && (
+          {!isFirebaseConfigured && (
             <div className="px-6 pb-4">
               <Alert>
                 <AlertCircle className="h-4 w-4" />
@@ -226,7 +232,7 @@ export default function SignupPage() {
                   type="password"
                   value={formData.password}
                   onChange={handleInputChange}
-                  required={!isError}
+                  required={isFirebaseConfigured}
                 />
               </div>
               <div className="space-y-2">
@@ -237,7 +243,7 @@ export default function SignupPage() {
                   type="password"
                   value={formData.confirmPassword}
                   onChange={handleInputChange}
-                  required={!isError}
+                  required={isFirebaseConfigured}
                 />
               </div>
             </CardContent>
@@ -246,9 +252,9 @@ export default function SignupPage() {
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {isError ? "Creating Demo Account..." : "Creating Account..."}
+                    {!isFirebaseConfigured ? "Creating Demo Account..." : "Creating Account..."}
                   </>
-                ) : isError ? (
+                ) : !isFirebaseConfigured ? (
                   "Create Demo Account"
                 ) : (
                   "Create Account"

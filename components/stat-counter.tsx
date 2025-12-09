@@ -58,13 +58,13 @@ export function StatCounter({ icon, value, label, duration = 2000 }: StatCounter
 
   return (
     <Card
-      className="bg-eco-green-500 border-none shadow-lg"
+      className="bg-white/5 backdrop-blur-sm border-white/10 shadow-lg"
       id={`stat-counter-${label.replace(/\s+/g, "-").toLowerCase()}`}
     >
       <CardContent className="p-6 flex flex-col items-center text-center">
-        <div className="rounded-full bg-white p-3 mb-4">{icon}</div>
+        <div className="rounded-full bg-white/10 p-3 mb-4">{icon}</div>
         <h3 className="text-3xl font-bold text-white">{count.toLocaleString()}</h3>
-        <p className="text-eco-green-900 font-medium">{label}</p>
+        <p className="text-gray-300 font-medium">{label}</p>
       </CardContent>
     </Card>
   )

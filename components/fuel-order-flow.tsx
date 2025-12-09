@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,9 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ServiceLocationSelector } from "./service-location-selector"
 import { FuelBillingForm } from "./fuel-billing-form"
-import { DeliveryTracking } from "./delivery-tracking"
+import { RealTimeTracking } from "./real-time-tracking"
 import { toast } from "@/components/ui/use-toast"
 import { Loader2, CheckCircle, AlertCircle, ArrowLeft } from "lucide-react"
+import { useAuth } from "@/components/auth-provider"
+import { db } from "@/lib/firebase"
+import { collection, addDoc } from "firebase/firestore"
 
 type FuelType = "Petrol" | "Diesel" | "Premium Petrol" | "Premium Diesel"
 
@@ -28,8 +30,7 @@ const FUEL_PRICES: FuelPrices = {
 }
 
 export function FuelOrderFlow() {
-  const supabase = createClientComponentClient()
-  const [user, setUser] = useState<any>(null)
+  const { user } = useAuth()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [orderPlaced, setOrderPlaced] = useState(false)
@@ -48,17 +49,6 @@ export function FuelOrderFlow() {
   const [deliveryFee, setDeliveryFee] = useState(50)
   const [tax, setTax] = useState(0)
   const [total, setTotal] = useState(0)
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      setUser(user)
-    }
-
-    fetchUser()
-  }, [])
 
   useEffect(() => {
     // Calculate prices
@@ -119,38 +109,25 @@ export function FuelOrderFlow() {
 
     try {
       // Create order in database
-      const { data, error } = await supabase
-        .from("orders")
-        .insert({
-          user_id: user.id,
-          service_type: "fuel",
-          fuel_type: fuelType,
-          quantity: quantity,
-          delivery_location: `POINT(${location.lng} ${location.lat})`,
-          delivery_address: address,
-          subtotal: subtotal,
-          delivery_fee: deliveryFee,
-          tax: tax,
-          total: total,
-          status: "processing",
-          created_at: new Date().toISOString(),
-        })
-        .select()
+      const orderData = {
+        user_id: user.uid,
+        service_type: "fuel",
+        fuel_type: fuelType,
+        quantity: quantity,
+        delivery_location: { lat: location.lat, lng: location.lng }, // Store as object instead of POINT string for easier Firestore usage
+        delivery_address: address,
+        subtotal: subtotal,
+        delivery_fee: deliveryFee,
+        tax: tax,
+        total: total,
+        status: "processing",
+        created_at: new Date().toISOString(),
+      }
 
-      if (error) throw error
+      const docRef = await addDoc(collection(db, "orders"), orderData)
+      const newOrderId = docRef.id
 
-      // Get the order ID
-      const { data: orderData, error: orderError } = await supabase
-        .from("orders")
-        .select("id")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single()
-
-      if (orderError) throw orderError
-
-      setOrderId(orderData.id)
+      setOrderId(newOrderId)
       setOrderPlaced(true)
       setStep(3)
 
@@ -324,22 +301,19 @@ export function FuelOrderFlow() {
                   </div>
                   <div className="p-4">
                     {location && selectedServiceLocation && (
-                      <DeliveryTracking
-                        serviceType="fuel"
-                        orderId={orderId}
-                        providerName={selectedServiceLocation.name}
-                        providerPhone={selectedServiceLocation.phone || "9876543210"}
-                        providerRating={selectedServiceLocation.rating}
-                        userLocation={location}
-                        estimatedTime={Math.round(selectedServiceLocation.distance * 5 + 15)}
-                        onBack={handleGoBack}
-                        orderDetails={{
-                          fuelType,
-                          quantity,
-                          total,
-                          address,
-                        }}
-                      />
+                      <div className="space-y-4">
+                        <RealTimeTracking
+                          serviceId="fuel"
+                          providerName={selectedServiceLocation.name}
+                          providerPhone={selectedServiceLocation.phone || "9876543210"}
+                          estimatedTime={Math.round(selectedServiceLocation.distance * 5 + 15)}
+                        />
+                        <div className="flex justify-center">
+                          <Button variant="outline" onClick={handleGoBack}>
+                            Back to Home
+                          </Button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>

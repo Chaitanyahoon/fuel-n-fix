@@ -2,7 +2,9 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { auth, db } from "@/lib/firebase"
+import { doc, getDoc, setDoc, collection, query, where, getDocs, orderBy } from "firebase/firestore"
+import { onAuthStateChanged } from "firebase/auth"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,7 +28,6 @@ export function UserProfile({
   handleUpdateProfile,
   updating = false,
 }: UserProfileProps) {
-  const supabase = createClientComponentClient()
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<any>({
@@ -39,41 +40,22 @@ export function UserProfile({
   const [orders, setOrders] = useState<any[]>([])
 
   useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        setLoading(true)
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser)
 
-        // Get current user without triggering logout
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser()
-
-        if (userError) {
-          console.error("Error fetching user:", userError)
-          return
-        }
-
-        if (user) {
-          setUser(user)
-
+        try {
           // Get profile data
-          const { data: profileData, error: profileError } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", user.id)
-            .single()
+          const userDocRef = doc(db, "users", currentUser.uid)
+          const userDoc = await getDoc(userDocRef)
 
-          if (profileError && profileError.code !== "PGRST116") {
-            console.error("Error fetching profile:", profileError)
-          }
-
-          if (profileData) {
+          if (userDoc.exists()) {
+            const data = userDoc.data()
             setProfile({
-              full_name: profileData.full_name || "",
-              phone_number: profileData.phone_number || "",
-              address: profileData.address || "",
-              email: user.email || "",
+              full_name: data.full_name || "",
+              phone_number: data.phone_number || "",
+              address: data.address || "",
+              email: currentUser.email || "",
             })
           } else {
             // Set default profile with email from auth
@@ -81,39 +63,64 @@ export function UserProfile({
               full_name: "",
               phone_number: "",
               address: "",
-              email: user.email || "",
+              email: currentUser.email || "",
             })
           }
 
-          // Get service requests/orders
-          const { data: ordersData, error: ordersError } = await supabase
-            .from("service_requests")
-            .select("*")
-            .eq("user_id", user.id)
-            .order("created_at", { ascending: false })
+          // Get mechanic requests
+          const requestsQuery = query(
+            collection(db, "service_requests"),
+            where("user_id", "==", currentUser.uid),
+            orderBy("created_at", "desc")
+          )
 
-          if (ordersError) {
-            console.error("Error fetching orders:", ordersError)
-          } else {
-            setOrders(ordersData || [])
-          }
+          // Get fuel orders
+          const fuelOrdersQuery = query(
+            collection(db, "orders"),
+            where("user_id", "==", currentUser.uid),
+            orderBy("created_at", "desc")
+          )
+
+          const [requestsSnapshot, fuelOrdersSnapshot] = await Promise.all([
+            getDocs(requestsQuery),
+            getDocs(fuelOrdersQuery)
+          ])
+
+          const requestsData = requestsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            service_category: 'mechanic' // Distinguish type
+          }))
+
+          const fuelOrdersData = fuelOrdersSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            service_category: 'fuel' // Distinguish type
+          }))
+
+          // Combine and sort by date descending
+          const combinedOrders = [...requestsData, ...fuelOrdersData].sort((a: any, b: any) => {
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          })
+
+          setOrders(combinedOrders)
+
+        } catch (error) {
+          console.error("Error fetching user data:", error)
         }
-      } catch (error) {
-        console.error("Error in fetchUserData:", error)
-      } finally {
-        setLoading(false)
       }
-    }
+      setLoading(false)
+    })
 
-    // Use initial profile if provided, otherwise fetch
+    // Use initial profile if provided
     if (initialProfile) {
       setProfile(initialProfile)
       setOrders(serviceRequests)
       setLoading(false)
-    } else {
-      fetchUserData()
     }
-  }, [initialProfile, serviceRequests, supabase])
+
+    return () => unsubscribe()
+  }, [initialProfile, serviceRequests])
 
   const updateProfile = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -130,17 +137,12 @@ export function UserProfile({
     setLoading(true)
 
     try {
-      const { error } = await supabase.from("profiles").upsert({
-        id: user.id,
+      await setDoc(doc(db, "users", user.uid), {
         full_name: profile.full_name,
         phone_number: profile.phone_number,
         address: profile.address,
         updated_at: new Date().toISOString(),
-      })
-
-      if (error) {
-        throw error
-      }
+      }, { merge: true })
 
       toast({
         title: "Profile updated",

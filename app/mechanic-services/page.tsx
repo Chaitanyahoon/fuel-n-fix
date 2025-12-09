@@ -1,49 +1,32 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ServiceLocationSelector } from "@/components/service-location-selector"
-import { Wrench, Car, PenToolIcon as Tool, AlertTriangle, ArrowLeft } from "lucide-react"
+import { Wrench, Car, PenToolIcon as Tool, AlertTriangle, ArrowLeft, Truck, Battery, Droplets, Disc, Key, Zap } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { Footer } from "@/components/footer"
 import { useToast } from "@/components/ui/use-toast"
+import { useAuth } from "@/components/auth-provider"
 
 export default function MechanicServicesPage() {
-  const supabase = createClientComponentClient()
   const router = useRouter()
   const { toast } = useToast()
-  const [user, setUser] = useState<any>(null)
+  const { user, loading: authLoading } = useAuth()
+
   const [selectedLocation, setSelectedLocation] = useState<any>(null)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [address, setAddress] = useState("")
   const [isClient, setIsClient] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("services")
 
   // Set isClient to true after component mounts
   useEffect(() => {
     setIsClient(true)
   }, [])
-
-  // Check if user is logged in
-  useEffect(() => {
-    if (!isClient) return
-
-    const checkUser = async () => {
-      setIsLoading(true)
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      setUser(user)
-      setIsLoading(false)
-    }
-
-    checkUser()
-  }, [supabase, isClient])
 
   const handleLocationSelect = (location: any) => {
     setSelectedLocation(location)
@@ -64,6 +47,38 @@ export default function MechanicServicesPage() {
 
   const mechanicServices = [
     {
+      id: "emergency",
+      title: "Emergency Repair",
+      description: "On-site emergency repairs for breakdowns",
+      icon: AlertTriangle,
+      price: "From ₹2,000",
+      duration: "30 min - 2 hours",
+    },
+    {
+      id: "towing",
+      title: "Towing Service",
+      description: "Flatbed or hook towing for accidental or broken-down cars",
+      icon: Truck,
+      price: "From ₹1,200",
+      duration: "30-60 min arrival",
+    },
+    {
+      id: "battery",
+      title: "Battery Jumpstart",
+      description: "Jumpstart dead batteries or on-spot replacement",
+      icon: Battery,
+      price: "From ₹500",
+      duration: "30 min arrival",
+    },
+    {
+      id: "tyre",
+      title: "Tyre Services",
+      description: "Puncture repair, wheel alignment, or tyre replacement",
+      icon: Disc,
+      price: "From ₹200",
+      duration: "30-60 min",
+    },
+    {
       id: "basic-service",
       title: "Basic Service",
       description: "Oil change, filter replacement, and basic inspection",
@@ -80,14 +95,6 @@ export default function MechanicServicesPage() {
       duration: "3-4 hours",
     },
     {
-      id: "emergency",
-      title: "Emergency Repair",
-      description: "On-site emergency repairs for breakdowns",
-      icon: AlertTriangle,
-      price: "From ₹2,000",
-      duration: "30 min - 2 hours",
-    },
-    {
       id: "specialized",
       title: "Specialized Repairs",
       description: "Engine, transmission, electrical system repairs",
@@ -95,10 +102,47 @@ export default function MechanicServicesPage() {
       price: "Custom Quote",
       duration: "2-8 hours",
     },
+    {
+      id: "wash",
+      title: "Car Spa & Cleaning",
+      description: "Exterior wash, interior dry cleaning, and detailing",
+      icon: Droplets,
+      price: "From ₹400",
+      duration: "1-2 hours",
+    },
+    {
+      id: "lockout",
+      title: "Car Key Lockout",
+      description: "Keys locked inside? Expert unlocking without damage",
+      icon: Key,
+      price: "From ₹800",
+      duration: "30 min arrival",
+    },
+    {
+      id: "ev-charge",
+      title: "EV Mobile Charging",
+      description: "Emergency charging for stranded Electric Vehicles",
+      icon: Zap,
+      price: "From ₹1,000",
+      duration: "30-60 min",
+    },
   ]
 
   if (!isClient) {
     return null // Return null on server-side to prevent hydration mismatch
+  }
+
+  // Check if we show loading state
+  if (authLoading) {
+    return (
+      <div className="flex flex-col min-h-screen bg-gradient-to-b from-eco-dark-950 via-eco-dark-900 to-eco-dark-950">
+        <Navigation />
+        <main className="flex-1 container py-8 flex items-center justify-center">
+          <div className="text-white">Loading...</div>
+        </main>
+        <Footer />
+      </div>
+    )
   }
 
   return (
@@ -111,7 +155,7 @@ export default function MechanicServicesPage() {
             <p className="text-eco-green-300 mt-2">Find nearby mechanics or request roadside assistance</p>
           </div>
 
-          {!user && !isLoading ? (
+          {!user ? (
             <Card className="border-amber-600 bg-amber-950/30">
               <CardHeader>
                 <CardTitle>Authentication Required</CardTitle>

@@ -8,13 +8,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FuelIcon as GasPump, MapPin, NavigationIcon, ArrowLeft } from "lucide-react"
 import { ServiceLocationSelector } from "@/components/service-location-selector"
 import { BillingSystem } from "@/components/billing-system"
-import { DeliveryTracking } from "@/components/delivery-tracking"
+import { RealTimeTracking } from "@/components/real-time-tracking"
 import { Footer } from "@/components/footer"
-import { GoogleMapsLoader } from "@/components/google-maps-loader"
 import { EnhancedMap } from "@/components/enhanced-map"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
+import { useAuth } from "@/components/auth-provider"
+import { db } from "@/lib/firebase"
+import { doc, getDoc, addDoc, collection, onSnapshot } from "firebase/firestore"
 
 interface OrderDetails {
   id: string
@@ -32,10 +33,10 @@ interface OrderDetails {
 }
 
 export default function FuelServicesPage() {
-  const supabase = createClientComponentClient()
   const router = useRouter()
   const { toast } = useToast()
-  const [user, setUser] = useState<any>(null)
+  const { user, loading: authLoading } = useAuth()
+
   const [isDemoUser, setIsDemoUser] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState<any | null>(null)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
@@ -51,67 +52,66 @@ export default function FuelServicesPage() {
     setIsClient(true)
   }, [])
 
-  // Check if user is logged in
+  // Real-time order tracking
+  useEffect(() => {
+    if (!orderPlaced || !orderDetails?.id || isDemoUser) return
+
+    // Listen to 'orders' collection for updates
+    const unsubscribe = onSnapshot(doc(db, "orders", orderDetails.id), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data()
+        setOrderDetails(prev => prev ? ({ ...prev, status: data.status }) : null)
+
+        if (data.status === "completed") {
+          toast({ title: "Order Completed", description: "Your fuel has been delivered!" })
+          handleOrderComplete()
+        }
+      }
+    })
+
+    return () => unsubscribe()
+  }, [orderPlaced, orderDetails?.id, isDemoUser])
+
+  // Check demo user status and fetch user details if authenticated
   useEffect(() => {
     if (!isClient) return
 
-    const checkUser = async () => {
+    const checkUserAndFetchDetails = async () => {
       setIsLoading(true)
 
-      // Check for demo user first
+      // Check for demo user
       const demoAuth = localStorage.getItem("demo_authenticated")
       if (demoAuth === "true") {
+        setIsDemoUser(true)
         const demoUserData = localStorage.getItem("demo_user")
         if (demoUserData) {
           const demoUser = JSON.parse(demoUserData)
-          setUser(demoUser)
-          setIsDemoUser(true)
           setUserAddress(demoUser.address || "")
         }
-        setIsLoading(false)
-        return
-      }
-
-      // Check Supabase user
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        setUser(user)
+      } else {
         setIsDemoUser(false)
-      } catch (error) {
-        console.error("Error checking user:", error)
-      }
-
-      setIsLoading(false)
-    }
-
-    checkUser()
-  }, [supabase, isClient])
-
-  // Check if user is authenticated
-  useEffect(() => {
-    if (!isClient || !user || isDemoUser) return
-
-    const checkAuth = async () => {
-      setIsLoading(true)
-
-      // Get user's default address if available
-      try {
-        const { data } = await supabase.from("profiles").select("address").eq("id", user.id).single()
-
-        if (data && data.address) {
-          setUserAddress(data.address)
+        // If real user, fetch address from Firestore
+        if (user) {
+          try {
+            const userDoc = await getDoc(doc(db, "users", user.uid))
+            if (userDoc.exists()) {
+              const userData = userDoc.data()
+              if (userData.address) {
+                setUserAddress(userData.address)
+              }
+            }
+          } catch (error) {
+            console.error("Error fetching user profile:", error)
+          }
         }
-      } catch (error) {
-        console.error("Error fetching user profile:", error)
       }
-
       setIsLoading(false)
     }
 
-    checkAuth()
-  }, [user, supabase, isClient, isDemoUser])
+    if (!authLoading) {
+      checkUserAndFetchDetails()
+    }
+  }, [isClient, user, authLoading])
 
   const handleLocationSelect = (location: any) => {
     setSelectedLocation(location)
@@ -126,7 +126,7 @@ export default function FuelServicesPage() {
   }
 
   const handlePaymentComplete = async (fuelType: string, quantity: number, amount: number) => {
-    if (!user) {
+    if (!user && !isDemoUser) {
       router.push("/login")
       return
     }
@@ -142,44 +142,37 @@ export default function FuelServicesPage() {
 
     try {
       const requestData = {
-        serviceType: "fuel",
-        location: {
-          address: userAddress || selectedLocation.address,
-          lat: userLocation.lat,
-          lng: userLocation.lng,
-        },
+        service_type: "fuel",
+        location_address: userAddress || selectedLocation.address,
+        location_lat: userLocation.lat,
+        location_lng: userLocation.lng,
         quantity: quantity,
-        fuelType: fuelType,
-        serviceName: selectedLocation.name,
+        fuel_type: fuelType,
+        service_name: selectedLocation.name,
         amount: amount,
         status: "pending",
-        isDemoMode: isDemoUser,
+        user_id: user ? user.uid : "demo",
+        created_at: new Date().toISOString(),
+        is_demo: isDemoUser
       }
 
       console.log("Sending service request:", requestData)
 
-      const response = await fetch("/api/service-request", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestData),
-      })
+      let orderId = `DEMO-${Date.now()}`
 
-      const result = await response.json()
-      console.log("Service request response:", result)
-
-      if (!response.ok) {
-        throw new Error(result.error || `HTTP ${response.status}: Failed to create service request`)
-      }
-
-      if (!result.success) {
-        throw new Error(result.error || "Service request was not successful")
+      if (!isDemoUser && user) {
+        // Save to Firestore 'orders' collection (for Fuel)
+        // Note: Mechanic requests go to 'service_requests'
+        const docRef = await addDoc(collection(db, "orders"), requestData)
+        orderId = docRef.id
+      } else {
+        // Simulate network delay for demo
+        await new Promise(resolve => setTimeout(resolve, 1000))
       }
 
       // Set order details
       setOrderDetails({
-        id: result.data.id,
+        id: orderId,
         serviceType: "fuel",
         location: {
           address: userAddress || selectedLocation.address,
@@ -190,7 +183,7 @@ export default function FuelServicesPage() {
         fuelType: fuelType,
         amount: amount,
         status: "pending",
-        created_at: result.data.created_at,
+        created_at: new Date().toISOString(),
       })
 
       setOrderPlaced(true)
@@ -212,11 +205,6 @@ export default function FuelServicesPage() {
         description: errorMessage,
         variant: "destructive",
       })
-
-      // Show more detailed error in development
-      if (process.env.NODE_ENV === "development") {
-        console.error("Detailed error:", error)
-      }
     }
   }
 
@@ -258,7 +246,8 @@ export default function FuelServicesPage() {
     return null // Return null on server-side to prevent hydration mismatch
   }
 
-  const isAuthenticated = user && (isDemoUser || !isLoading)
+  // Determine if authenticated (either real user or demo)
+  const isAuthenticated = (user || isDemoUser) && !authLoading
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-b from-eco-dark-950 via-eco-dark-900 to-eco-dark-950">
@@ -373,16 +362,16 @@ export default function FuelServicesPage() {
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <div>
                           <h3 className="text-lg font-medium text-white mb-4">Delivery Location</h3>
-                          <GoogleMapsLoader>
-                            {userLocation && (
-                              <EnhancedMap
-                                userLocation={userLocation}
-                                providerLocation={selectedLocation.position}
-                                providerName={selectedLocation.name}
-                                className="mb-4"
-                              />
-                            )}
-                          </GoogleMapsLoader>
+
+                          {userLocation && (
+                            <EnhancedMap
+                              userLocation={userLocation}
+                              providerLocation={selectedLocation.position}
+                              providerName={selectedLocation.name}
+                              className="mb-4"
+                            />
+                          )}
+
                           <Card className="border-eco-green-700 bg-eco-dark-900">
                             <CardContent className="p-4">
                               <div className="space-y-3">
@@ -451,19 +440,22 @@ export default function FuelServicesPage() {
 
               <TabsContent value="track" className="mt-4">
                 {selectedLocation && userLocation && orderPlaced && orderDetails ? (
-                  <DeliveryTracking
-                    serviceType="fuel"
-                    orderId={orderDetails.id}
-                    providerName={selectedLocation.name}
-                    providerPhone={selectedLocation.phone || "9876543210"}
-                    providerRating={selectedLocation.rating}
-                    userLocation={userLocation}
-                    estimatedTime={Math.round(selectedLocation.distance * 5 + 15)}
-                    onComplete={handleOrderComplete}
-                    onCancel={handleOrderCancel}
-                    onBack={handleGoBack}
-                    orderDetails={orderDetails}
-                  />
+                  <div className="space-y-4">
+                    <RealTimeTracking
+                      serviceId="fuel"
+                      providerName={selectedLocation.name}
+                      providerPhone={selectedLocation.phone || "9876543210"}
+                      estimatedTime={Math.round(selectedLocation.distance * 5 + 15)}
+                    />
+                    <div className="flex gap-2">
+                      <Button onClick={handleOrderComplete} className="w-full bg-eco-green-600">
+                        Confirm Arrival (Demo)
+                      </Button>
+                      <Button onClick={handleOrderCancel} variant="outline" className="w-full border-red-500 text-red-500 hover:bg-red-950">
+                        Cancel Order
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
                   <Card className="border-eco-green-700 bg-eco-dark-800">
                     <CardHeader className="bg-eco-dark-900 border-b border-eco-green-800">

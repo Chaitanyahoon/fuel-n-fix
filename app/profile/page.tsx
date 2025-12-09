@@ -1,8 +1,5 @@
 "use client"
 
-import type React from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { UserProfile } from "@/components/user-profile"
 import { Button } from "@/components/ui/button"
@@ -11,128 +8,19 @@ import { Navigation } from "@/components/navigation"
 import { Footer } from "@/components/footer"
 import { toast } from "@/components/ui/use-toast"
 import { LogOut, ArrowLeft } from "lucide-react"
-
-interface Profile {
-  id: string
-  full_name: string
-  phone_number: string
-  email?: string
-  address?: string
-  created_at?: string
-  updated_at?: string
-}
-
-interface ServiceRequest {
-  id: string
-  service_type: string
-  status: string
-  created_at: string
-  address?: string
-  quantity?: number
-  fuel_type?: string
-  service_name?: string
-  amount?: number
-}
+import { useAuth } from "@/components/auth-provider"
 
 export default function ProfilePage() {
-  const supabase = createClientComponentClient()
   const router = useRouter()
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [updating, setUpdating] = useState(false)
-  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([])
-
-  useEffect(() => {
-    const checkUserAndLoadProfile = async () => {
-      try {
-        setLoading(true)
-
-        // Check if user is authenticated
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser()
-
-        if (userError) {
-          console.error("Auth error:", userError)
-          router.push("/login")
-          return
-        }
-
-        if (!user) {
-          router.push("/login")
-          return
-        }
-
-        setUser(user)
-
-        // Load profile data
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single()
-
-        if (profileError && profileError.code !== "PGRST116") {
-          console.error("Profile error:", profileError)
-        }
-
-        if (profileData) {
-          setProfile({
-            ...profileData,
-            email: user.email,
-          })
-        } else {
-          // Create a default profile if none exists
-          setProfile({
-            id: user.id,
-            full_name: "",
-            phone_number: "",
-            email: user.email,
-            address: "",
-          })
-        }
-
-        // Load service requests
-        const { data: requestsData, error: requestsError } = await supabase
-          .from("service_requests")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-
-        if (requestsError) {
-          console.error("Service requests error:", requestsError)
-        } else {
-          setServiceRequests(requestsData || [])
-        }
-      } catch (error: any) {
-        console.error("Error loading profile:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load profile data. Please try again.",
-          variant: "destructive",
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    checkUserAndLoadProfile()
-  }, [supabase, router])
+  const { user, loading, logout } = useAuth()
 
   const handleSignOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut()
-      if (error) {
-        throw error
-      }
-
+      await logout()
       toast({
         title: "Signed out",
         description: "You have been successfully signed out.",
       })
-
       router.push("/")
     } catch (error: any) {
       toast({
@@ -140,51 +28,6 @@ export default function ProfilePage() {
         description: "Failed to sign out. Please try again.",
         variant: "destructive",
       })
-    }
-  }
-
-  const handleUpdateProfile = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!user || !profile) return
-
-    setUpdating(true)
-
-    try {
-      const { error } = await supabase.from("profiles").upsert({
-        id: user.id,
-        full_name: profile.full_name,
-        phone_number: profile.phone_number,
-        address: profile.address,
-        updated_at: new Date().toISOString(),
-      })
-
-      if (error) {
-        throw error
-      }
-
-      toast({
-        title: "Profile updated",
-        description: "Your profile has been updated successfully.",
-      })
-
-      // Refresh profile data
-      const { data: updatedProfile } = await supabase.from("profiles").select("*").eq("id", user.id).single()
-
-      if (updatedProfile) {
-        setProfile({
-          ...updatedProfile,
-          email: user.email,
-        })
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update profile",
-        variant: "destructive",
-      })
-    } finally {
-      setUpdating(false)
     }
   }
 
@@ -270,12 +113,7 @@ export default function ProfilePage() {
             </Button>
           </div>
 
-          <UserProfile
-            profile={profile}
-            serviceRequests={serviceRequests}
-            handleUpdateProfile={handleUpdateProfile}
-            updating={updating}
-          />
+          <UserProfile />
         </div>
       </main>
       <Footer />
