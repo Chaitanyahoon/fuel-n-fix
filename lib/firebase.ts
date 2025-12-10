@@ -14,10 +14,22 @@ const firebaseConfig = {
 }
 
 // Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
-const auth = getAuth(app)
-const db = getFirestore(app)
-let analytics = null
+let app: any = null;
+let auth: any = null;
+let db: any = null;
+let analytics: any = null;
+
+if (firebaseConfig.apiKey) {
+  try {
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
+    auth = getAuth(app)
+    db = getFirestore(app)
+  } catch (error) {
+    console.error("Firebase initialization error", error)
+  }
+} else {
+  console.warn("Firebase Config missing (Build Mode?). Skipping initialization.")
+}
 
 if (typeof window !== "undefined") {
   isSupported().then((supported) => {
