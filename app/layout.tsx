@@ -9,9 +9,9 @@ import { AuthProvider } from "@/components/auth-provider"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Fuel N Fix",
+  title: "Fuel-n-Fix",
   description: "Get fuel delivery and mechanical services at your location",
-  generator: 'v0.dev'
+  generator: 'Next.js'
 }
 
 export default function RootLayout({

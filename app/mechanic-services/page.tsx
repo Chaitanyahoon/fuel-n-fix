@@ -6,11 +6,14 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ServiceLocationSelector } from "@/components/service-location-selector"
-import { Wrench, Car, PenToolIcon as Tool, AlertTriangle, ArrowLeft, Truck, Battery, Droplets, Disc, Key, Zap } from "lucide-react"
+import { Wrench, Car, PenToolIcon as Tool, AlertTriangle, ArrowLeft, Truck, Battery, Droplets, Disc, Key, Zap, NavigationIcon } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { Footer } from "@/components/footer"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/components/auth-provider"
+import { addDoc, collection, doc, onSnapshot, serverTimestamp } from "firebase/firestore"
+import { db } from "@/lib/firebase"
+import { RealTimeTracking } from "@/components/real-time-tracking"
 
 export default function MechanicServicesPage() {
   const router = useRouter()
@@ -23,10 +26,44 @@ export default function MechanicServicesPage() {
   const [isClient, setIsClient] = useState(false)
   const [activeTab, setActiveTab] = useState("services")
 
+  // Request handling state
+  const [isLoading, setIsLoading] = useState(false)
+  const [currentRequest, setCurrentRequest] = useState<any>(null)
+  const [requestId, setRequestId] = useState<string | null>(null)
+
   // Set isClient to true after component mounts
   useEffect(() => {
     setIsClient(true)
   }, [])
+
+  // Listen for request updates (e.g. driver assigned)
+  useEffect(() => {
+    if (!requestId) return
+
+    const unsubscribe = onSnapshot(doc(db, "service_requests", requestId), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data()
+        setCurrentRequest((prev: any) => ({ ...prev, ...data }))
+
+        if (data.status === 'assigned' && !currentRequest?.driverId) {
+          toast({
+            title: "Mechanic Assigned!",
+            description: "A mechanic is on their way to your location.",
+          })
+        }
+
+        if (data.status === 'completed') {
+          toast({
+            title: "Service Completed",
+            description: "Your service request has been marked as completed.",
+          })
+          // Optional: Clear request after delay
+        }
+      }
+    })
+
+    return () => unsubscribe()
+  }, [requestId])
 
   const handleLocationSelect = (location: any) => {
     setSelectedLocation(location)
@@ -42,6 +79,65 @@ export default function MechanicServicesPage() {
     setUserLocation({ lat, lng })
     if (formattedAddress) {
       setAddress(formattedAddress)
+    }
+  }
+
+  const handleRequestService = async (service: any) => {
+    if (!user) {
+      router.push("/login")
+      return
+    }
+
+    if (!selectedLocation || !userLocation) {
+      setActiveTab("location")
+      toast({
+        title: "Location Required",
+        description: "Please select a location first.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const requestData = {
+        userId: user.uid,
+        status: 'pending',
+        created_at: new Date().toISOString(), // Use string for consistency
+        vehicle_type: "Car", // Default or add a selector
+        issue_description: service.title,
+        details: {
+          serviceId: service.id,
+          serviceName: service.title,
+          price: service.price
+        },
+        location: {
+          lat: userLocation.lat,
+          lng: userLocation.lng,
+          address: address || selectedLocation.address
+        },
+        serviceLocationId: selectedLocation.id,
+        serviceLocationName: selectedLocation.name
+      }
+
+      const docRef = await addDoc(collection(db, "service_requests"), requestData)
+      setRequestId(docRef.id)
+      setCurrentRequest({ id: docRef.id, ...requestData })
+
+      setActiveTab("track")
+      toast({
+        title: "Request Submitted",
+        description: "Finding a mechanic for you...",
+      })
+    } catch (error) {
+      console.error("Error submitting request:", error)
+      toast({
+        title: "Submission Failed",
+        description: "Could not create service request. Please try again.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -177,7 +273,7 @@ export default function MechanicServicesPage() {
             </Card>
           ) : (
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="mb-6 bg-eco-dark-800">
+              <TabsList className="mb-6 bg-eco-dark-800 grid grid-cols-4 w-full">
                 <TabsTrigger
                   value="services"
                   className="data-[state=active]:bg-eco-green-600 data-[state=active]:text-white"
@@ -191,10 +287,17 @@ export default function MechanicServicesPage() {
                   Service Location
                 </TabsTrigger>
                 <TabsTrigger
+                  value="track"
+                  disabled={!requestId}
+                  className="data-[state=active]:bg-eco-green-600 data-[state=active]:text-white"
+                >
+                  Track Status
+                </TabsTrigger>
+                <TabsTrigger
                   value="info"
                   className="data-[state=active]:bg-eco-green-600 data-[state=active]:text-white"
                 >
-                  Service Information
+                  Info
                 </TabsTrigger>
               </TabsList>
 
@@ -224,22 +327,10 @@ export default function MechanicServicesPage() {
                       <CardFooter>
                         <Button
                           className="w-full bg-eco-green-600 hover:bg-eco-green-700"
-                          onClick={() => {
-                            if (selectedLocation) {
-                              toast({
-                                title: "Service Selected",
-                                description: `${service.title} selected. Proceed to location if needed.`,
-                              })
-                            } else {
-                              setActiveTab("location")
-                              toast({
-                                title: "Select Location",
-                                description: "Please select a location first to request this service",
-                              })
-                            }
-                          }}
+                          disabled={isLoading}
+                          onClick={() => handleRequestService(service)}
                         >
-                          Request Service
+                          {isLoading ? "Submitting..." : "Request Service"}
                         </Button>
                       </CardFooter>
                     </Card>
@@ -322,6 +413,38 @@ export default function MechanicServicesPage() {
                     </Button>
                   </CardFooter>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="track" className="mt-4">
+                {currentRequest ? (
+                  <div className="space-y-4">
+                    <Card className="bg-eco-dark-800 border-eco-green-700 mb-4">
+                      <CardContent className="p-4 flex justify-between items-center">
+                        <div>
+                          <h3 className="font-bold text-white text-lg">{currentRequest.issue_description}</h3>
+                          <p className="text-eco-green-300">Status: <span className="uppercase font-semibold text-white">{currentRequest.status}</span></p>
+                        </div>
+                        <Button variant="outline" onClick={() => {
+                          setRequestId(null)
+                          setCurrentRequest(null)
+                          setActiveTab("services")
+                        }}>New Request</Button>
+                      </CardContent>
+                    </Card>
+
+                    <RealTimeTracking
+                      serviceId={requestId!}
+                      providerName={currentRequest.serviceLocationName || "Nearby Mechanic"}
+                      providerPhone={selectedLocation?.phone || "9999999999"}
+                      estimatedTime={30}
+                      driverId={currentRequest.driverId}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center py-10">
+                    <p className="text-gray-400">No active request to track.</p>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="info">

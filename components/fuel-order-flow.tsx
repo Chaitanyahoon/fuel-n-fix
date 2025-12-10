@@ -15,6 +15,18 @@ import { Loader2, CheckCircle, AlertCircle, ArrowLeft } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 import { db } from "@/lib/firebase"
 import { collection, addDoc } from "firebase/firestore"
+import { sendSMS, sendEmail } from "@/lib/notifications"
+
+
+// ... imports
+
+// Inside placeOrder function, after successful addDoc:
+
+// Simulate Notification
+await sendSMS(user.phoneNumber || "+919999999999", `Order ${newOrderId} placed successfully! A driver will be assigned shortly.`)
+await sendEmail(user.email || "user@example.com", "Order Confirmation", `Your fuel order #${newOrderId} has been received.`)
+
+setOrderId(newOrderId)
 
 type FuelType = "Petrol" | "Diesel" | "Premium Petrol" | "Premium Diesel"
 
@@ -126,6 +138,10 @@ export function FuelOrderFlow() {
 
       const docRef = await addDoc(collection(db, "orders"), orderData)
       const newOrderId = docRef.id
+
+      // Simulation Notification
+      await sendSMS(user.phoneNumber || "+919999999999", `Order ${newOrderId} placed successfully! A driver will be assigned shortly.`)
+      await sendEmail(user.email || "user@example.com", "Order Confirmation", `Your fuel order #${newOrderId} has been received.`)
 
       setOrderId(newOrderId)
       setOrderPlaced(true)

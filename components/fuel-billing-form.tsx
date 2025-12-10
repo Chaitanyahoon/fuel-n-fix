@@ -205,51 +205,40 @@ export function FuelBillingForm({
           <div className="space-y-4">
             <div>
               <h3 className="font-medium text-white mb-3">Select Payment Method</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 <Button
-                  onClick={() => handlePayment("Razorpay")}
+                  onClick={() => handlePayment("PayU Money")}
                   disabled={loading}
-                  className="bg-[#2d88ff] hover:bg-[#1a73e8] text-white flex items-center justify-center gap-2 h-12"
+                  className="bg-[#a5cf4c] hover:bg-[#86b529] text-white flex items-center justify-center gap-2 h-12 text-lg font-semibold shadow-md"
                 >
                   {loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    <img src="/placeholder.svg?height=24&width=24" alt="Razorpay" className="h-5 w-5 object-contain" />
+                    <span className="font-bold">PayU</span>
                   )}
-                  Pay with Razorpay
+                  Pay with PayU Money
                 </Button>
-                <Button
-                  onClick={() => handlePayment("Paytm")}
-                  disabled={loading}
-                  className="bg-[#00baf2] hover:bg-[#00a1d9] text-white flex items-center justify-center gap-2 h-12"
-                >
-                  {loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <img src="/placeholder.svg?height=24&width=24" alt="Paytm" className="h-5 w-5 object-contain" />
-                  )}
-                  Pay with Paytm
-                </Button>
-                <Button
-                  onClick={() => handlePayment("UPI")}
-                  disabled={loading}
-                  className="bg-[#6739b7] hover:bg-[#5a32a3] text-white flex items-center justify-center gap-2 h-12"
-                >
-                  {loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <img src="/placeholder.svg?height=24&width=24" alt="UPI" className="h-5 w-5 object-contain" />
-                  )}
-                  Pay with UPI
-                </Button>
-                <Button
-                  onClick={() => handlePayment("Cash on Delivery")}
-                  disabled={loading}
-                  className="bg-eco-dark-700 hover:bg-eco-dark-600 text-white flex items-center justify-center gap-2 h-12"
-                >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-5 w-5" />}
-                  Cash on Delivery
-                </Button>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    onClick={() => handlePayment("UPI")}
+                    disabled={loading}
+                    variant="outline"
+                    className="border-eco-green-700 text-eco-green-100 hover:bg-eco-green-900/20 flex items-center justify-center gap-2"
+                  >
+                    <img src="/placeholder.svg?height=20&width=20" alt="UPI" className="h-5 w-5 object-contain opacity-70" />
+                    UPI
+                  </Button>
+                  <Button
+                    onClick={() => handlePayment("Cash on Delivery")}
+                    disabled={loading}
+                    variant="outline"
+                    className="border-eco-green-700 text-eco-green-100 hover:bg-eco-green-900/20 flex items-center justify-center gap-2"
+                  >
+                    <CreditCard className="h-5 w-5" />
+                    Cash on Delivery
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
